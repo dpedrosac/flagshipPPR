@@ -1,0 +1,66 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='576.00pt' height='936.00pt' viewBox='0 0 576.00 936.00'>
+<g class='svglite'>
+<defs>
+  <style type='text/css'><![CDATA[
+    .svglite line, .svglite polyline, .svglite polygon, .svglite path, .svglite rect, .svglite circle {
+      fill: none;
+      stroke: #000000;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-miterlimit: 10.00;
+    }
+    .svglite text {
+      white-space: pre;
+    }
+    .svglite g.glyphgroup path {
+      fill: inherit;
+      stroke: none;
+    }
+  ]]></style>
+</defs>
+<rect width='100%' height='100%' style='stroke: none; fill: none;'/>
+<defs>
+  <clipPath id='cpMC4wMHw1NzYuMDB8MC4wMHw5MzYuMDA='>
+    <rect x='0.00' y='0.00' width='576.00' height='936.00' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMC4wMHw1NzYuMDB8MC4wMHw5MzYuMDA=)'>
+<rect x='233.27' y='58.69' width='130.17' height='20.26' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='298.36' y='72.95' text-anchor='middle' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='118.17px' lengthAdjust='spacingAndGlyphs'>Randomised (n = 211)</text>
+<rect x='99.62' y='215.18' width='192.39' height='20.26' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='195.82' y='229.43' text-anchor='middle' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='180.39px' lengthAdjust='spacingAndGlyphs'>Allocated to Intervention (n = 108)</text>
+<rect x='316.70' y='215.18' width='168.39' height='20.26' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='400.90' y='229.43' text-anchor='middle' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='156.39px' lengthAdjust='spacingAndGlyphs'>Allocated to Control (n = 103)</text>
+<rect x='0.86' y='465.49' width='182.69' height='123.94' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='5.11' y='479.75' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='129.03px' lengthAdjust='spacingAndGlyphs'>Lost to follow-up (n = 8):</text>
+<text x='5.11' y='497.03' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='138.91px' lengthAdjust='spacingAndGlyphs'>• Study too demanding (2)</text>
+<text x='5.11' y='514.31' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='170.69px' lengthAdjust='spacingAndGlyphs'>• Felt insufficiently supported (1)</text>
+<text x='5.11' y='531.59' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='128.03px' lengthAdjust='spacingAndGlyphs'>• Technical problems (2)</text>
+<text x='5.11' y='548.87' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='154.25px' lengthAdjust='spacingAndGlyphs'>• Family-related problems (1)</text>
+<text x='5.11' y='566.15' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='79.56px' lengthAdjust='spacingAndGlyphs'>• Deceased (1)</text>
+<text x='5.11' y='583.43' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='153.59px' lengthAdjust='spacingAndGlyphs'>• Health-related problems (1)</text>
+<rect x='413.05' y='437.36' width='162.22' height='72.10' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='417.30' y='451.62' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='129.03px' lengthAdjust='spacingAndGlyphs'>Lost to follow-up (n = 4):</text>
+<text x='417.30' y='468.90' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='150.22px' lengthAdjust='spacingAndGlyphs'>• Refused further contact (2)</text>
+<text x='417.30' y='486.18' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='138.91px' lengthAdjust='spacingAndGlyphs'>• Study too demanding (1)</text>
+<text x='417.30' y='503.46' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='130.25px' lengthAdjust='spacingAndGlyphs'>• No reason provided (1)</text>
+<rect x='102.28' y='819.49' width='187.08' height='20.26' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='195.82' y='833.74' text-anchor='middle' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='175.08px' lengthAdjust='spacingAndGlyphs'>Completed intervention (n = 100)</text>
+<rect x='323.70' y='819.49' width='154.39' height='20.26' style='stroke-width: 0.75; fill: #FFFFFF;' />
+<text x='400.90' y='833.74' text-anchor='middle' style='font-size: 12.00px; font-family: "Liberation Sans";' textLength='142.39px' lengthAdjust='spacingAndGlyphs'>Completed control (n = 99)</text>
+<polyline points='298.36,79.31 298.36,143.46 195.82,143.46 195.82,214.81 ' style='stroke-width: 0.75;' />
+<polygon points='192.22,208.58 195.82,214.81 199.42,208.58 ' style='stroke-width: 0.75; fill: #000000;' />
+<polyline points='298.36,79.31 298.36,143.46 400.90,143.46 400.90,214.81 ' style='stroke-width: 0.75;' />
+<polygon points='397.30,208.58 400.90,214.81 404.50,208.58 ' style='stroke-width: 0.75; fill: #000000;' />
+<polyline points='195.82,235.80 195.82,527.46 182.82,527.46 ' style='stroke-width: 0.75;' />
+<polygon points='189.05,523.86 182.82,527.46 189.05,531.06 ' style='stroke-width: 0.75; fill: #000000;' />
+<polyline points='400.90,235.80 400.90,473.41 414.40,473.41 ' style='stroke-width: 0.75;' />
+<polygon points='408.16,477.01 414.40,473.41 408.16,469.81 ' style='stroke-width: 0.75; fill: #000000;' />
+<polyline points='195.82,235.80 195.82,523.86 195.82,523.86 195.82,819.12 ' style='stroke-width: 0.75;' />
+<polygon points='192.22,812.89 195.82,819.12 199.42,812.89 ' style='stroke-width: 0.75; fill: #000000;' />
+<polyline points='400.90,235.80 400.90,523.86 400.90,523.86 400.90,819.12 ' style='stroke-width: 0.75;' />
+<polygon points='397.30,812.89 400.90,819.12 404.50,812.89 ' style='stroke-width: 0.75; fill: #000000;' />
+</g>
+</g>
+</svg>
