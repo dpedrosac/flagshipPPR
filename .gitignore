@@ -51,3 +51,4 @@ rsconnect/
 # Projhect specific folders
 /deprecated/
 /raw_data/
+/results/

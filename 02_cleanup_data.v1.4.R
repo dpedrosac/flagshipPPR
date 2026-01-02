@@ -1,84 +1,21 @@
 #!/usr/bin/env Rscript
-
-## ---------------------------
-##
-## Script name: 02_cleanup_data.R
-##
-## Purpose of script: Clean and recode ParkProReakt raw data (PDQ-39, BDI, MoCA, UPDRS,
-##                    Hoehn & Yahr, demographics) into analysis-ready datasets.
-##
-## Authors: Antonia Koelble, David Pedrosa
-##
-## ---------------------------
-##
-## Notes:
-##   - Project: ParkProReakt (2022–2025)
-##   - GitHub repository: https://github.com/dpedrosac/flagshipPPR/
-##
-## ---------------------------
-
-
-# This is code to analyse the ParkProReakt results (project from 2022 -2025)
-# Code developed by Antonia Koelble and  David Pedrosa
+# =============================================================================
+# Script Name:  02_cleanup_data.R
+# Purpose:      Clean and recode ParkProReakt raw data into analysis-ready datasets.
 #
-# Version 1.3  # 2025-12-06 # version including handling of dummy variables, fixed error at nmss coding,
-#	       # and errors at the way dates were handled.		
-# Version 1.2  # 2025-11-26 # Changes in structure and added further questionnaires
-
-#source("01_settings.R") ich aknn nichts als source lade
-
-pkgs <- c(
-  "consort", "dplyr", "emmeans", "ggplot2", "janitor", "lme4", "lubridate",
-  "patchwork", "purrr", "readr", "survival", "sjPlot", "stringr", "tableone",
-  "tidyr", "tidyverse"
-)
-
-# Install any packages that are not yet installed and load them
-for (p in pkgs) {
-  if (!requireNamespace(p, quietly = TRUE)) {
-    install.packages(p, dependencies = TRUE)
-  }
-  library(p, character.only = TRUE)
-}
-
-################################################################################
-# Paths and global settings
-################################################################################
-
-# Toggle this to TRUE when you want to see quick checks in the console/Viewer
-sanity_check <- FALSE
-
-# Get user name (works on Windows and almost all other systems)
-user_name <- Sys.getenv("USERNAME", unset = Sys.info()[["user"]])
-
-# Define base directory depending on user
-if (user_name == "akoel") {
-  base_dir <- file.path("C:", "Users", "akoel", "OneDrive","Desktop", "Dr. Arbeit")
-} else if (user_name == "david") {
-  base_dir <- file.path("/", "media", "storage", "flagshipPPR")
-} else {
-  # Fallback: use the user's home directory
-  base_dir <- path.expand("~")
-  message(
-    "⚠️ Unknown user: ", user_name,
-    ". Using default home directory instead."
-  )
-}
-
-# Define path where results are saved
-# (this folder will be created if it doesn't exist)
-results_dir <- file.path(base_dir, "results")
-
-if (!dir.exists(results_dir)) {
-  dir.create(results_dir, recursive = TRUE)
-  message("📁 Created folder: ", results_dir)
-}
+# Authors:	Antonia Koelble, Anna Pedrosa, Hanna Fischer, David Pedrosa
+#
+# ---------------------------
+#
+# Notes:
+# Project:     	ParkProReakt (2022–2025)
+# Repository:  	https://github.com/dpedrosac/flagshipPPR/
+# Inputs:     	raw_data/* (exported CSVs; see script for filenames)
+# Outputs:    	results/sorted_pdq39.csv and additional QC/derived outputs.
+# =============================================================================
 
 
-
-################################################################################
-# Excluded patients: forgot  a patient and added them
-################################################################################
+# ---- # Excluded patients and other erroneous data: ---------------------------
 
 exclude_patients <- c(
   "ZL4A0VBU", "0TOLUW4TF", "AKUK06XMH", "MTPNPZCIY", "G1QP3RGZ5", "0TRNBST3B" , 
@@ -87,39 +24,38 @@ exclude_patients <- c(
   "IAA50B1K", "X8QUGGZ3", "J1TGCNP9"
 )
 
-exclude_mustermann <- c("U3PVC5MF", "7DHDS3O3", "ZRN953JU")
-################################################################################
-# ID data and age
-################################################################################
+# list of test subjects, that were included at the beginning of the project
+exclude_mustermann <- c("U3PVC5MF", "7DHDS3O3", "ZRN953JU") 
+
+# ---- # Bookkeeping ID data and age: ------------------------------------------
 
 randomisation_list <- read.csv(
   file.path(base_dir, "raw_data", "randomisation_table.csv"),
   sep = ";",
   header = TRUE,
   check.names = FALSE
-) 
+)
 
+# some bookkeeping to account for German "Umlaute" and similar
 randomisation_list <- randomisation_list %>%
   mutate(
     inclusion_clean = str_remove(inclusion_date, "^[A-Za-zäöüÄÖÜ]{2,3},\\s*"),
     birth_clean     = str_remove(birth_date,   "^[A-Za-zäöüÄÖÜ]{2,3},\\s*"),
-    
+
     inclusion_clean = str_replace_all(inclusion_clean, "M.?rz", "März"),
     birth_clean     = str_replace_all(birth_clean,     "M.?rz", "März"),
-    
+
     birth_clean = na_if(str_squish(birth_clean), ""),
     inclusion_clean = na_if(str_squish(inclusion_clean), ""),
-    
+
     inclusion_date  = dmy(inclusion_clean, locale = "de_DE.utf8", quiet = TRUE),
     birth_date      = dmy(birth_clean,     locale = "de_DE.utf8", quiet = TRUE),
-    
+
     age_years = floor(interval(birth_date, inclusion_date) / years(1))
   )
 
 
-################################################################################
-# Group data (patient-level group assignment)
-################################################################################
+# ---- # Assign group data: ----------------------------------------------------
 
 ## Group data
 data_group_pat <- read.csv(
@@ -142,18 +78,15 @@ group_data <- data_group_pat %>%
   select(patient, group)
 
 
-################################################################################
-# Load PDQ-39 raw data
-################################################################################
+# ---- # Load data to workspace: -----------------------------------------------
 
-# Load data to workspace
-## PDQ39
+# PDQ39
 pdq39_raw <- read.csv2(
   file     = file.path(base_dir, "raw_data", "pdq39_sortiert_Final_dummy.withdropout.csv"), # "pdq39_sortiert_Final.csv"),
   encoding = "UTF-8"
 )
 
-pdq39_raw <- pdq39_raw |>
+pdq39_raw <- pdq39_raw %>%
   dplyr::filter(!patient %in% exclude_mustermann)
 
 # Only show outputs if sanity_check is TRUE
@@ -162,8 +95,7 @@ if (isTRUE(sanity_check)) {
 }
 
 
-########################################################
-#join demographiep and moca for educational background
+# ---- # join demographiep and educational background: -------------------------
  
 demographiep_path <- file.path(base_dir, "raw_data",
                                "cleaned_export_qform_5_2025-10-13-09-54_30_demapped.csv")
@@ -180,26 +112,8 @@ ergänzungen <- read.csv2(
 ergänzungen <- ergänzungen %>%
   filter(!patient %in% exclude_mustermann)
 
-moca <- read.csv(
-  file.path(base_dir, "raw_data", "moca_raw.csv")
-)
 
-moca <- moca %>%
-  filter(!patient %in% exclude_mustermann) 
-
-moca <- moca %>%
-  left_join(
-    ergänzungen %>% select(patient, Wert),
-    by = "patient"
-  ) %>%
-  mutate(
-    extrapunkt_gesamt = coalesce(Wert, extrapunkt_gesamt)
-  ) %>%
-  select(-Wert)
-
-################################################################################
-# Load BDI, MoCA, UPDRS, Hoehn & Yahr
-################################################################################
+# ---- # load further data: ----------------------------------------------------
 
 # bdi, moca, updrs, hoehnyahr
 bdi_file       <- file.path(base_dir, "raw_data", "bdi_raw.csv")
@@ -223,9 +137,20 @@ updrs     <- read_scale(updrs_file,     exclude_patients, exclude_mustermann)
 hoehnyahr <- read_scale(hoehnyahr_file, exclude_patients, exclude_mustermann)
 
 
-################################################################################
-# MoCA variable renaming and selection
-################################################################################
+# ---- #  MoCA variable, adapt score according to education and rename scores: -
+
+moca <- moca %>%
+  filter(!patient %in% exclude_mustermann) 
+
+moca <- moca %>%
+  left_join(
+    ergänzungen %>% select(patient, Wert),
+    by = "patient"
+  ) %>%
+  mutate(
+    extrapunkt_gesamt = coalesce(Wert, extrapunkt_gesamt)
+  ) %>%
+  select(-Wert)
 
 moca <- moca %>%
   rename(
@@ -252,18 +177,14 @@ moca_vars <- c(
 )
 
 
-################################################################################
-# UPDRS variable renaming and selection
-################################################################################
+# ---- #  updrs: -
 
 updrs <- updrs %>%
   select(where(~ !all(is.na(.x))))
 
 updrs_vars <- c("summaryindex_updrs", "Teil1", "Teil2", "Teil3", "Teil4")
 
-################################################################################
-# NMSS
-################################################################################
+# ---- #  NMSS; read data and convert to sum scores according to formula: ------
 
 nmss_raw = read.csv(file.path(base_dir, "raw_data", "cleaned_export_qform_5_2025-10-13-09-54_22_demapped.csv"))
 
@@ -275,7 +196,7 @@ to_num <- function(x) {
   as.numeric(substr(trimws(x), 1, 1))
 }
 
-# find all Schwere-columns
+# find "Schwere"-columns (severity of symptoms)
 schwere_idx  <- grep("Schwere$", names(nmss_raw))
 schwere_cols <- names(nmss_raw)[schwere_idx]
 name_cols <- names(nmss_raw)[schwere_idx-1]
@@ -321,9 +242,8 @@ nmss_item_cols <- nmss %>%
 
 nmss$nmss_total <- rowSums(select(nmss, all_of(nmss_item_cols)), na.rm = TRUE)
 
-
 nmss <- nmss %>%
-  rename(postdate = "id153_Ausgefüllt.am.....Poststempeldatum") %>%   # rename the column
+  rename(postdate = "id153_Ausgefüllt.am.....Poststempeldatum") %>%  # rename column
   mutate(postdate = as.Date(postdate, format = "%d.%m.%Y"))          # convert to Date
 
 nmss <- nmss %>%
@@ -344,7 +264,8 @@ nmss <- nmss %>%
     by = "patient"
   ) %>% 
   mutate(
-    # robust mapping: handles "True"/"true"/1/yes → Intervention; else Control; NA stays NA
+    # robust mapping: handles "True"/"true"/1/yes -> Intervention; 
+    # else Control; NA stays NA
     group = case_when(
       is.na(active) ~ NA_character_,
       str_to_lower(active) %in% c("true", "1", "yes", "y") ~ "Intervention",
@@ -357,10 +278,7 @@ nmss <- nmss %>%
   arrange(patient, Timepoint, postdate)
 
 
-
-################################################################################
-# eq5d
-################################################################################
+# ---- #  eq5d; read data and extract relevant parts for later -----------------
 
 eq5d_raw = read.csv(file.path(base_dir, "raw_data", "cleaned_export_qform_5_2025-10-13-09-54_34_demapped.csv"))
 
@@ -368,7 +286,7 @@ eq5d_raw <- eq5d_raw %>%
   dplyr::filter(!patient %in% exclude_mustermann)
 
 eq5d <- eq5d_raw %>%
-  rename(postdate = "id9_Ausgefüllt.am.....Poststempeldatum") %>%   # rename the column
+   rename(postdate = "id9_Ausgefüllt.am.....Poststempeldatum") %>%   # rename the column
   mutate(postdate = as.Date(postdate, format = "%d.%m.%Y"))          # convert to Date
 
 eq5d <- eq5d %>%
@@ -409,142 +327,95 @@ eq5d <- eq5d %>%
     )
   ) %>%
   select(-active) %>%
-  # keep only the important columns, in a tidy order
-  select(patient, id, postdate, group, Timepoint, all_of(eq5d_item_cols), likert) %>%
+  select(patient, id, postdate, group, Timepoint, all_of(eq5d_item_cols), likert) %>%   # keep only the important columns, in a tidy order
   arrange(patient, Timepoint, postdate)
 
-# WHO-5
+
+# ---- #  who5; read data and extract relevant parts for later -----------------
 
 who5_raw = read.csv(file.path(base_dir, "raw_data", "cleaned_export_qform_5_2025-10-13-09-54_32_demapped.csv"))
 who5_raw <- who5_raw %>%
   dplyr::filter(!patient %in% exclude_mustermann)
 
+
+# ---- #  barthel; read data, extract relevant parts and estimate scores -----------------
+
 ## Coding
-#Die ganze Zeit: 5 Punkte
-#Meistens: 4 Punkte
-#Etwas mehr als die Hälfte der Zeit: 3 Punkte
-#Etwas weniger als die Hälfte der Zeit: 2 Punkte
-#Ab und zu: 1 Punkt
-#Zu keinem Zeitpunkt: 0 Punkte
-####################################################################
-barthel <- read.csv("C:\\Users\\akoel\\OneDrive\\Desktop\\Dr. Arbeit\\raw_data\\cleaned_export_qform_5_2025-10-13-09-54_29_demapped.csv")
+# All of the time (Die ganze Zeit): 5 points
+# Most of the time (Meistens): 4 points
+# Slightly more than half of the time (Etwas mehr als die Hälfte der Zeit): 3 points
+# Slightly less than half of the time (Etwas weniger als die Hälfte der Zeit): 2 points
+# Occasionally (Ab und zu): 1 point
+# At no time (Zu keinem Zeitpunkt): 0 points
+
+barthel_items <- c(
+  "id11_ESSEN",
+  "id12_AUFSETZEN.UND.UMSETZEN",
+  "id13_SICH.WASCHEN",
+  "id14_TOILETTENBENUTZUNG",
+  "id15_BADEN..DUSCHEN",
+  "id16_AUFSETZEN.UND.UMSETZEN",
+  "id17_TREPPENSTEIGEN",
+  "id18_AN....AUSKLEIDEN",
+  "id19_STUHLKONTROLLE",
+  "id20_HARNKONTROLLE"
+)
 
 group_data <- data_group_pat %>%
-  rename(patient = patient_id) %>%
-  mutate(
-    active_clean = active %>%
-      as.character() %>%
-      trimws() %>%
-      tolower(),
+  transmute(
+    patient = patient_id,
     group = case_when(
-      active_clean == "true"  ~ "Intervention",
-      active_clean == "false" ~ "Control",
-      TRUE                    ~ NA_character_
+      tolower(trimws(as.character(active))) == "true"  ~ "Intervention",
+      tolower(trimws(as.character(active))) == "false" ~ "Control",
+      TRUE                                             ~ NA_character_
     )
-  ) %>%
-  select(patient, group)
-
-barthel <- barthel %>%
-  filter(!patient %in% exclude_patients)
-
-barthel <- barthel %>%
-  rename(
-    postdate = "id31_Ausgefüllt.am.....Poststempeldatum"
   )
 
-barthel$postdate <- dmy(barthel$postdate)
-
-#sortierung und Timepoints hinzufügen
-barthel <- barthel %>%
+barthel <- read.csv(file.path(base_dir, "raw_data",
+  "cleaned_export_qform_5_2025-10-13-09-54_29_demapped.csv"
+)) %>%
+  rename(postdate = id31_Ausgefüllt.am.....Poststempeldatum) %>%
+  mutate(postdate = dmy(postdate)) %>%
+  filter(!patient %in% c(exclude_patients, exclude_mustermann)) %>%
   group_by(patient) %>%
   mutate(Timepoint = if_else(postdate == min(postdate), "T0", "T6")) %>%
   ungroup() %>%
   mutate(Timepoint = factor(Timepoint, levels = c("T0", "T6"))) %>%
   arrange(patient, Timepoint) %>%
-  select(patient, questionnaire, created_at, id, authored, postdate, Timepoint,everything())
-
-#spalte löschen
-barthel <- barthel %>%
-  select(-id2_Barthel.Index)
-
-#barthel index
-barthel <- barthel %>%
-  mutate(across(
-    .cols = c(
-      id11_ESSEN,
-      id12_AUFSETZEN.UND.UMSETZEN,
-      id13_SICH.WASCHEN,
-      id14_TOILETTENBENUTZUNG,
-      id15_BADEN..DUSCHEN,
-      id16_AUFSETZEN.UND.UMSETZEN,
-      id17_TREPPENSTEIGEN,
-      id18_AN....AUSKLEIDEN,
-      id19_STUHLKONTROLLE,
-      id20_HARNKONTROLLE
-    ),
-    .fns = ~ {
+  select(patient, questionnaire, created_at, id, authored, postdate, Timepoint, everything()) %>%
+  select(-id2_Barthel.Index, -id27_Notizen..Anmerkungen.Barthel.Index.) %>%
+  mutate(
+    across(all_of(barthel_items), ~ {
       num <- as.numeric(stringr::str_extract(as.character(.x), "^\\d+"))
-      ifelse(num %in% c(0, 5, 10, 15), num, NA_real_)
-    }
-  ))
-
-barthel <- barthel %>%
-  mutate(
-    barthel_index = rowSums(
-      across(c(
-        id11_ESSEN,
-        id12_AUFSETZEN.UND.UMSETZEN,
-        id13_SICH.WASCHEN,
-        id14_TOILETTENBENUTZUNG,
-        id15_BADEN..DUSCHEN,
-        id16_AUFSETZEN.UND.UMSETZEN,
-        id17_TREPPENSTEIGEN,
-        id18_AN....AUSKLEIDEN,
-        id19_STUHLKONTROLLE,
-        id20_HARNKONTROLLE
-      )),
-      na.rm = TRUE   
-    )
-  )
-#summary(barthel$barthel_index)
-
-
-#nochmal spalte entfernen
-barthel <- barthel %>%
-  select(-id27_Notizen..Anmerkungen.Barthel.Index.)
-
-#gruppe hinzufügen
-barthel <- barthel %>%
-  left_join(group_data, by = "patient") %>%
-  mutate(
-    group = factor(group, levels = c("Control", "Intervention"))
+      if_else(num %in% c(0, 5, 10, 15), num, NA_real_)
+    }),
+    barthel_index = rowSums(across(all_of(barthel_items)), na.rm = TRUE)
   ) %>%
+  left_join(group_data, by = "patient") %>%
+  mutate(group = factor(group, levels = c("Control", "Intervention"))) %>%
   relocate(group, .after = Timepoint)
 
-#dummy
 dummy_patients <- c("6CTED4AH", "8R8Z6JYI")
-barthel_dummy <- barthel %>%
-  filter(patient %in% dummy_patients, Timepoint == "T0") %>%  
-  mutate(
-    Timepoint    = "T6",
-    postdate     = NA,          # oder ein Dummy-Datum, falls nötig
-    barthel_index = NA,         # Score-Dummy
-    across( starts_with("id"), ~ NA )  # alle Itemspalten auf NA
-  )
-barthel <- bind_rows(barthel, barthel_dummy) %>%
+
+barthel <- bind_rows(
+  barthel,
+  barthel %>%
+    filter(patient %in% dummy_patients, Timepoint == "T0") %>%
+    mutate(
+      Timepoint = factor("T6", levels = c("T0", "T6")),
+      postdate = as.Date(NA),
+      barthel_index = NA_real_,
+      across(starts_with("id"), ~ NA)
+    )
+) %>%
   arrange(patient, Timepoint)
 
 barthel %>%
   filter(patient %in% dummy_patients) %>%
   arrange(patient, Timepoint)
 
-barthel <- barthel %>%
-  filter(!patient %in% c(exclude_patients, exclude_mustermann))
 
-
-################################################################################
-# Build master data (BDI, MoCA, UPDRS, Hoehn & Yahr)
-################################################################################
+# ---- # Build master data (BDI, MoCA, UPDRS, Barthel, EQ5D, Hoehn & Yahr) -----
 
 master_data <- list(
   bdi       %>% select(patient, group, Timepoint, bdi_score),
@@ -564,9 +435,7 @@ master_data <- list(
   )
 
 
-################################################################################
-# Demographics with recoding and translation
-################################################################################
+# ---- # add demographics and recode -------------------------------------------
 
 demographics_pat <- read.csv(
   file     = file.path(base_dir, "raw_data", "cleaned_export_qform_5_2025-10-13-09-54_30_demapped.csv"),
@@ -584,6 +453,7 @@ demographics_pat <- demographics_pat %>%
 demographics_pat <- demographics_pat %>%
   left_join(randomisation_list , by = "patient")
 
+#marital status
 demographics_pat <- demographics_pat %>%
   mutate(
     # Clean and translate marital status
@@ -614,11 +484,7 @@ if (isTRUE(sanity_check)) {
     print(n = Inf)
 }
 
-
-################################################################################
-# Country of origin
-################################################################################
-
+# birthplace
 country_map <- c(
   "Deutschland"     = "Germany",
   "Polen"           = "Poland",
@@ -652,11 +518,7 @@ demographics_pat <- demographics_pat %>%
       factor()
   )
 
-
-################################################################################
-# Gender at birth
-################################################################################
-
+# gender at birth
 sex_map <- c(
   "Weiblich" = "Female",
   "Männlich" = "Male"
@@ -671,11 +533,7 @@ demographics_pat <- demographics_pat %>%
       factor(levels = c("Female", "Male"))
   )
 
-
-################################################################################
-# Living situation
-################################################################################
-
+# living situation
 demographics_pat <- demographics_pat %>%
   mutate(
     housing = id17_Wohnsituation %>%
@@ -703,11 +561,7 @@ demographics_pat <- demographics_pat %>%
       ))
   )
 
-
-################################################################################
-# Language
-################################################################################
-
+# language
 demographics_pat <- demographics_pat %>%
   mutate(
     native_language = id53_Muttersprache %>%
@@ -735,10 +589,7 @@ demographics_pat <- demographics_pat %>%
   )
 
 
-################################################################################
-# Education
-################################################################################
-
+#education
 # Ordered final categories
 levels_order <- c(
   "No degree",
@@ -797,10 +648,7 @@ demographics_pat <- demographics_pat %>%
   )
 
 
-################################################################################
-# Employment
-################################################################################
-
+#employment
 demographics_pat <- demographics_pat %>%
   mutate(
     employment_status = case_when(
@@ -829,10 +677,7 @@ demographics_pat <- demographics_pat %>%
   )
 
 
-################################################################################
-# Insurance
-################################################################################
-
+#insurance
 demographics_pat <- demographics_pat %>%
   mutate(
     insurance = .data[["id37_Name.der.Krankenversicherung"]] |> as.character(),
@@ -868,10 +713,7 @@ demographics_pat <- demographics_pat %>%
   )
 
 
-################################################################################
-# Hoehn & Yahr
-################################################################################
-
+#hoehn and yahr
 demographics_pat <- demographics_pat %>%
   mutate(
     hoehnyahr_t0 = recode(
@@ -883,10 +725,7 @@ demographics_pat <- demographics_pat %>%
   )
 
 
-################################################################################
-# Postal code / city
-################################################################################
-
+# zipcode
 demographics_pat$city <- factor(trimws(demographics_pat[["id22_Postleitzahl"]]))
 
 
@@ -931,18 +770,7 @@ demographics_pat$city <- factor(demographics_pat$city)
 table(demographics_pat$city, useNA = "ifany")
 
 
-################################################################################
-# Necessary changes and sanity checks in the raw PDQ-39 data
-################################################################################
-
-
-# This version is obsolete but should not be deleted; assuming that something went
-# wrong when manually checking dta, so that  as.Date(postdate, format = "%d.%m.%Y")
-# does not create meaningful date anymore.
-
-pdq39_raw_old <- pdq39_raw %>%
-  rename(postdate = "id85_Ausgefüllt.am.....Poststempeldatum") %>%   # rename the column
-  mutate(postdate = as.Date(postdate, format = "%d.%m.%Y"))          # convert to Date
+# ---- # necessary changes in the primary outcome ------------------------------
 
 pdq39_raw <- pdq39_raw %>%
   rename(postdate_raw = "id85_Ausgefüllt.am.....Poststempeldatum") %>%
@@ -1045,12 +873,8 @@ if (isTRUE(sanity_check)) {
   readr::write_csv(violations_stamp, out_path)
 }
 
-# view(pdq39_raw)
 
-
-################################################################################
-# Remap values for all PDQ-39 items
-################################################################################
+# ---- # Remap values for all PDQ-39 items -------------------------------------
 
 pdq_map <- c(
   "niemals"                        = 0,
@@ -1072,8 +896,6 @@ pdq39_raw <- pdq39_raw %>%
       dplyr::recode(!!!pdq_map, .default = NA_real_, .missing = NA_real_)
   ))
 
-# view(pdq39_raw)
-
 write.csv(
   pdq39_raw,
   file.path(results_dir, "pdq39_raw.csv"),
@@ -1082,9 +904,7 @@ write.csv(
 )
 
 
-################################################################################
-# PDQ-39 domain scores (new version)
-################################################################################
+# ---- # PDQ-39 domain scores --------------------------------------------------
 
 score_pct <- function(df, cols, item_max = 4) {
   vals  <- df[, cols, drop = FALSE]          # subset columns
@@ -1108,10 +928,7 @@ pdq39_raw <- pdq39_raw %>%
     bodily_discomfort_score   = score_pct(., 52:54)
   )
 
-################################################################################
-# Sanity checks: missing domains per patient (optional)
-################################################################################
-
+# sanity check
 if (isTRUE(sanity_check)) { # The next part relied heavily on a LLM so that credit goes to ChatAI!
 
   # 1) Define PDQ-39 domain column ranges
@@ -1159,9 +976,7 @@ if (isTRUE(sanity_check)) { # The next part relied heavily on a LLM so that cred
 }
 
 
-################################################################################
-# PDQ-39 sum index
-################################################################################
+# ---- # Estimate PDQ-39 sum index ---------------------------------------------
 
 pdq39_raw <- pdq39_raw %>%
   rowwise() %>%
@@ -1169,8 +984,6 @@ pdq39_raw <- pdq39_raw %>%
     pdq39_sum_index = sum(c_across(62:69), na.rm = TRUE) / 8
   ) %>%
   ungroup()
-
-# view(pdq39_raw)
 
 test = TRUE	
 if (isTRUE(test)){
@@ -1186,9 +999,8 @@ pdq39_raw <- pdq39_raw %>%
 
 }
 
-################################################################################
-# Add group to all PDQ-39 values and export sorted data
-################################################################################
+
+# ---- # Add group to all PDQ-39 values and export sorted data -----------------
 
 sorted_pdq39 <- pdq39_raw %>%
   left_join(
@@ -1237,9 +1049,8 @@ if (!dir.exists(results_dir)) dir.create(results_dir, recursive = TRUE)
 
 readr::write_csv(sorted_pdq39, file.path(results_dir, "sorted_pdq39.csv"))
 
-################################################################################
-# Create TableOne
-################################################################################
+
+# ---- # Create Table1 --------------------------------------------------------
 
 source("03_createTableOne.v1.0.R")
 
