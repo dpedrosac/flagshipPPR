@@ -23,223 +23,144 @@
 ##
 ## ---------------------------
 
+#!/usr/bin/env Rscript
+# =============================================================================
+# Script Name:  04_analysespdq.V1.1.R
+# Purpose:      Primary endpoint analyses for PDQ-39 (descriptives, plots, and linear mixed models).
+#
+# Author(s):    Antonia Koelble; David Pedrosa
+#
+# Notes:
+# Project:     ParkProReakt (2022–2025)
+# Repository:  https://github.com/dpedrosac/flagshipPPR/
+# Inputs:     results/sorted_pdq39.csv (created by 02_cleanup_data.R)
+# Outputs:    figures and model tables written to results/ (see ggsave/tab_model).
+# =============================================================================
 
-################################################################################
-# Data preparation
-################################################################################
 
-source("02_cleanup_data.v1.3.R") # loads all data into workspace
+# ---- # Load necessary data for secondary analyses and restrict to T0/T6: -----
 
-
-############################################################################################
-# Secondary analyses: UPDRS, MoCA, BDI
-############################################################################################
-
-moca_T0_T6 <- moca %>% filter(Timepoint %in% c("T0", "T6"))
-bdi_T0_T6 <- bdi %>% filter(Timepoint %in% c("T0", "T6"))
-updrs_T0_T6 <- updrs %>% filter(Timepoint %in% c("T0", "T6"))
-barthel_T0_T6 <- barthel %>% filter(Timepoint %in% c("T0", "T6"))
-
-analysis_both <- sorted_pdq39 %>%
-  dplyr::group_by(group, Timepoint) %>%           # <- group by both
-  dplyr::summarise(
-    n        = sum(!is.na(pdq39_sum_index)),
-    Mean     = mean(pdq39_sum_index, na.rm = TRUE),
-    Median   = median(pdq39_sum_index, na.rm = TRUE),
-    SD       = stats::sd(pdq39_sum_index, na.rm = TRUE),
-    SE       = SD / sqrt(n),
-    Minimum  = min(pdq39_sum_index, na.rm = TRUE),
-    Q1       = stats::quantile(pdq39_sum_index, 0.25, na.rm = TRUE, names = FALSE),
-    IQR      = stats::IQR(pdq39_sum_index, na.rm = TRUE),
-    Q3       = stats::quantile(pdq39_sum_index, 0.75, na.rm = TRUE, names = FALSE),
-    Maximum  = max(pdq39_sum_index, na.rm = TRUE),
-    Variance = stats::var(pdq39_sum_index, na.rm = TRUE),
-    lower    = Q1 - 1.5 * IQR,   # Tukey lower fence
-    upper    = Q3 + 1.5 * IQR,   # Tukey upper fence
-    .groups  = "drop"
-  )
-
-if (isTRUE(sanity_check)) { # Only show outputs if sanity_check is TRUE
-  print(analysis_both)                # console preview
-  if (interactive()) utils::View(analysis_both, title = "Intervention descriptives")
+# runs necessary analyses if data is not in the workspace
+if (!exists("sorted_pdq39") || !is.data.frame(sorted_pdq39)) {
+  message("Object missing or invalid — running cleanup script.")
+  source("02_cleanup_data.V1.4.R")
 }
 
-############################################################################################
-# Start plots
-############################################################################################
+# Restrict to T0/T6 (optional; make_score_plot() also filters)
+moca_T0_T6    <- moca    %>% dplyr::filter(Timepoint %in% c("T0", "T6"))
+bdi_T0_T6     <- bdi     %>% dplyr::filter(Timepoint %in% c("T0", "T6"))
+updrs_T0_T6   <- updrs   %>% dplyr::filter(Timepoint %in% c("T0", "T6"))
+barthel_T0_T6 <- barthel %>% dplyr::filter(Timepoint %in% c("T0", "T6"))
+
+# ---- Plot helper: mean ± SD + LMM interaction label --------------------------
 
 make_score_plot <- function(data, score_col, score_label, sanity_check = TRUE) {
-  # score_col: character with the column name, e.g. "total_score_moca"
-  # score_label: pretty label for axes/annotation, e.g. "MoCA"
-  
-  score_sym     <- sym(score_col)                     # symbol for the score column
-  baseline_name <- paste0(score_col, "_baseline")     # e.g. "total_score_moca_baseline"
-  baseline_sym  <- sym(baseline_name)
-  
+  # data:       long data with columns patient, group, Timepoint, and score_col
+  # score_col:  character, e.g. "total_score_moca"
+  # score_label: axis label / panel label, e.g. "MoCA"
+
+  score_sym     <- rlang::sym(score_col)
+  baseline_name <- paste0(score_col, "_baseline")
+  baseline_sym  <- rlang::sym(baseline_name)
+
   # 1) Restrict to T0 and T6
   data_T0_T6 <- data %>%
-    filter(Timepoint %in% c("T0", "T6"))
-  
-  # 2) Derive baseline (T0) score per patient
+    dplyr::filter(Timepoint %in% c("T0", "T6"))
+
+  # 2) Baseline score per patient (T0)
   baseline <- data_T0_T6 %>%
-    filter(Timepoint == "T0") %>%
-    select(
-      patient,
-      !!baseline_sym := !!score_sym
-    )
-  
-  # 3) Join baseline back into T0–T6 data
+    dplyr::filter(Timepoint == "T0") %>%
+    dplyr::select(patient, !!baseline_sym := !!score_sym)
+
+  # 3) Join baseline back
   data_T0_T6 <- data_T0_T6 %>%
-    left_join(baseline, by = "patient")
-  
-  # 4) Summary statistics for mean ± SD
+    dplyr::left_join(baseline, by = "patient")
+
+  # 4) Summary statistics (mean ± SD)
   df_summary <- data_T0_T6 %>%
-    group_by(group, Timepoint) %>%
-    summarise(
+    dplyr::group_by(group, Timepoint) %>%
+    dplyr::summarise(
       n    = sum(!is.na(!!score_sym)),
       mean = mean(!!score_sym, na.rm = TRUE),
       sd   = sd(!!score_sym,   na.rm = TRUE),
       .groups = "drop"
     ) %>%
-  mutate(
-    # Recode T0/T6 to human-readable labels
-    Timepoint = recode(
-      Timepoint,
-      "T0" = "baseline",
-      "T6" = "6-months"
-    ),
+    dplyr::mutate(
+      Timepoint = dplyr::recode(Timepoint, "T0" = "baseline", "T6" = "6-months"),
+      Timepoint = factor(Timepoint, levels = c("baseline", "6-months")),
+      x_num     = as.numeric(Timepoint),
+      x_text    = x_num + ifelse(group == "Control", -0.15, 0.15)
+    )
 
-    # Fix ordering on the x-axis
-    Timepoint = factor(Timepoint, levels = c("baseline", "6-months")),
-
-    # Numeric x positions
-    x_num  = as.numeric(Timepoint),
-
-    # Shift text labels left/right
-    x_text = x_num + ifelse(group == "Control", -0.15, 0.15)
-  )
-  
-
-  # Dynamic y-limits based on mean ± 2 SD with padding
+  # Dynamic y-limits based on mean ± 1.25 SD (with padding)
   y_min_raw <- min(df_summary$mean - 1.25 * df_summary$sd, na.rm = TRUE)
   y_max_raw <- max(df_summary$mean + 1.25 * df_summary$sd, na.rm = TRUE)
-  
-  y_min <- max(0, y_min_raw)                                   # no negative scores
-  y_max <- y_max_raw + 0.10 * (y_max_raw - y_min_raw)          # 10% padding on top
-  
-  # Height for "n =" labels (just above error bars, but inside plotting area)
-  yposition <- y_max_raw -.05 * (y_max_raw - y_min_raw)
-  
+
+  y_min <- max(0, y_min_raw)
+  y_max <- y_max_raw + 0.10 * (y_max_raw - y_min_raw)
+  y_pos <- y_max_raw - 0.05 * (y_max_raw - y_min_raw)
+
   # 5) LMM: score ~ baseline + group * Timepoint + (1 | patient)
-  model_formula <- as.formula(
-    paste0(
-      score_col,
-      " ~ ",
-      baseline_name,
-      " + group * Timepoint + (1 | patient)"
-    )
-  )
-  
-  model_lmm <- lmer(
-    formula = model_formula,
-    data    = data_T0_T6
-  )
-  
-  # Extract ANOVA table and pull group:Timepoint stats
-  anova_tbl <- anova(model_lmm, type = 3) %>%
+  model_formula <- stats::as.formula(paste0(
+    score_col, " ~ ", baseline_name, " + group * Timepoint + (1 | patient)"
+  ))
+
+  model_lmm <- lme4::lmer(formula = model_formula, data = data_T0_T6)
+
+  # Extract group×time interaction stats from type-III ANOVA
+  anova_tbl <- anova(model_lmm) %>%
     as.data.frame() %>%
-    rownames_to_column("term")
-  
-  gt_row <- anova_tbl %>%
-    filter(term == "group:Timepoint")
-  
+    tibble::rownames_to_column("term")
+
+  gt_row <- dplyr::filter(anova_tbl, term == "group:Timepoint")
+
+  stat_label <- "Group×Time: n/a"
   if (nrow(gt_row) == 1) {
-    # Column names differ slightly by version, so be defensive
     f_col <- intersect(c("F.value", "F value"), names(gt_row))
     p_col <- intersect(c("Pr..F.", "Pr(>F)"), names(gt_row))
-    
+
     F_val <- if (length(f_col) == 1) gt_row[[f_col]] else NA_real_
     p_val <- if (length(p_col) == 1) gt_row[[p_col]] else NA_real_
-    
+
     stat_label <- sprintf(
       "Group×Time: F = %.2f, p = %s",
       F_val,
       format.pval(p_val, digits = 2, eps = 0.001)
     )
-  } else {
-    stat_label <- "Group×Time: n/a"
   }
-  
+
   if (isTRUE(sanity_check)) {
     message("=== LMM ANOVA for ", score_label, " ===")
     print(anova_tbl)
     message("Stats label: ", stat_label)
   }
-  
-  ##############################################################################
-  # Plot: mean ± SD over T0/T6, group-wise, with centered header annotation
-  ##############################################################################
-  
+
+  # Plot: mean ± SD / n-labels / header annotations
   dodge_w <- 0.15
-  pdodge  <- position_dodge(width = dodge_w)
-  
-  # x-position for centered "header" text (middle between T0 and T6)
-  x_mid <- mean(as.numeric(df_summary$Timepoint))
-  
-  p <- ggplot(
+  pdodge  <- ggplot2::position_dodge(width = dodge_w)
+  x_mid   <- mean(as.numeric(df_summary$Timepoint))
+
+  p <- ggplot2::ggplot(
     df_summary,
-    aes(x = Timepoint, y = mean, group = group, linetype = group)
+    ggplot2::aes(x = Timepoint, y = mean, group = group, linetype = group)
   ) +
-    # Error bars: mean ± SD
-    geom_errorbar(
-      aes(ymin = mean - sd, ymax = mean + sd),
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = mean - sd, ymax = mean + sd),
       position  = pdodge,
       width     = 0.05,
       linewidth = 1.1,
       color     = "black"
     ) +
-    # Mean points
-    geom_point(
-      position = pdodge,
-      size     = 3,
-      color    = "black"
-    ) +
-    # Connecting mean lines
-    geom_line(
-      position  = pdodge,
-      linewidth = 1.2,
-      color     = "black"
-    ) +
-    
-      # Text labels positioned at x_text
-    geom_text(
-      data = df_summary,
-      aes(
-      x     = x_text,
-      y     = yposition,
-      label = sprintf("n = %d", n)
-    ),
+    ggplot2::geom_point(position = pdodge, size = 3, color = "black") +
+    ggplot2::geom_line(position = pdodge, linewidth = 1.2, color = "black") +
+    ggplot2::geom_text(
+      ggplot2::aes(x = x_text, y = y_pos, label = sprintf("n = %d", n)),
       vjust       = -0.8,
       size        = 6,
       color       = "black",
       inherit.aes = FALSE
     ) +
-  
-    # n-labels at fixed height
-    #geom_text(
-    #  aes(
-    #    x     = Timepoint,
-    #    y     = yposition,
-    #    label = sprintf("n = %d", n),
-    #    group = group
-    #  ),
-    #  position = position_dodge(width = dodge_w),
-    #  vjust    = -0.8,
-    #  size     = 4.0,
-    #  color    = "black"
-    #) +
-    # Centered header-like annotation: score label + stats, stacked
-    annotate(
+    ggplot2::annotate(
       "text",
       x        = x_mid,
       y        = y_max,
@@ -249,37 +170,28 @@ make_score_plot <- function(data, score_col, score_label, sanity_check = TRUE) {
       size     = 6,
       fontface = "bold"
     ) +
-    scale_linetype_manual(
-      values = c("Control" = "solid", "Intervention" = "dashed")
+    ggplot2::scale_linetype_manual(values = c(Control = "solid", Intervention = "dashed")) +
+    ggplot2::coord_cartesian(ylim = c(y_min, y_max)) +
+    ggplot2::labs(title = NULL, x = NULL, y = score_label, linetype = "Group") +
+    ggplot2::theme_minimal(base_size = 18) +
+    ggplot2::theme(
+      legend.position      = c(0.98, 0.05),
+      legend.justification = c(1, 0),
+      legend.background    = ggplot2::element_rect(
+        fill  = scales::alpha("white", 0.8),
+        color = NA
+      ),
+      panel.grid.minor   = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      axis.title         = ggplot2::element_text(size = 20),
+      axis.text          = ggplot2::element_text(size = 18),
+      legend.text        = ggplot2::element_text(size = 16),
+      legend.title       = ggplot2::element_text(size = 16)
     ) +
-    coord_cartesian(ylim = c(y_min, y_max)) +
-    labs(
-      title    = NULL,
-      x        = "",
-      y        = score_label,
-      linetype = "Group"
-    ) +
-    theme_minimal(base_size = 18) +
-    theme(
-  	legend.position      = c(0.98, 0.05),         # bottom-right corner
-  	legend.justification = c(1, 0),               # anchor legend to bottom-right
-  	legend.background    = element_rect(
-                           fill = alpha("white", 0.8),
-                           color = NA
-                         ),
-  	panel.grid.minor   = element_blank(),
-  	panel.grid.major.x = element_blank(),
-  	axis.title         = element_text(size = 20),
-  	axis.text          = element_text(size = 18),
-  	legend.text        = element_text(size = 16),
-  	legend.title       = element_text(size = 16)
-    ) +
-    guides(
-      linetype = guide_legend(
-      override.aes = list(size = 3)     # increase line thickness in legend
-      )
+    ggplot2::guides(
+      linetype = ggplot2::guide_legend(override.aes = list(linewidth = 1.2))
     )
-  
+
   list(
     data_T0_T6 = data_T0_T6,
     summary    = df_summary,
@@ -288,109 +200,56 @@ make_score_plot <- function(data, score_col, score_label, sanity_check = TRUE) {
   )
 }
 
-################################################################################
-# Apply to MoCA, BDI, UPDRS and combine with patchwork
-################################################################################
+# ---- Run secondary outcomes ---------------------------------------------------
 
-res_moca <- make_score_plot(
-  data        = moca,
-  score_col   = "total_score_moca",   # column name in `moca`
-  score_label = "MoCA"
-)
+res_moca    <- make_score_plot(moca,    "total_score_moca", "MoCA")
+res_bdi     <- make_score_plot(bdi,     "bdi_score",        "BDI-II")
+res_nmss    <- make_score_plot(nmss,    "nmss_total",       "NMSS")
+res_eq5d    <- make_score_plot(eq5d,    "likert",           "EQ-5D")
+res_barthel <- make_score_plot(barthel, "barthel_index",    "Barthel")
 
-res_bdi <- make_score_plot(
-  data        = bdi,
-  score_col   = "bdi_score",
-  score_label = "BDI-II"
-)
+res_updrs   <- make_score_plot(updrs, "Teil3", "UPDRS-III")
+res_updrs1  <- make_score_plot(updrs, "Teil1", "UPDRS-I")
+res_updrs2  <- make_score_plot(updrs, "Teil2", "UPDRS-II")
+res_updrs4  <- make_score_plot(updrs, "Teil4", "UPDRS-IV")
 
-res_updrs <- make_score_plot(
-  data        = updrs,
-  score_col   = "Teil3",
-  score_label = "UPDRS-III"
-)
+# ---- Combine plots [patchwork] -----------------------------------------------
 
-
-res_nmss <- make_score_plot(
-  data        = nmss,
-  score_col   = "nmss_total",
-  score_label = "NMSS"
-)
-
-
-res_updrs1 <- make_score_plot(
-  data        = updrs,
-  score_col   = "Teil1",   # column name in `moca`
-  score_label = "UPDRS-I"
-)
-
-res_updrs2 <- make_score_plot(
-  data        = updrs,
-  score_col   = "Teil2",
-  score_label = "UPDRS-II"
-)
-
-res_updrs4 <- make_score_plot(
-  data        = updrs,
-  score_col   = "Teil4",
-  score_label = "UPDRS-IV"
-)
-
-res_eq5d <- make_score_plot(
-  data        = eq5d,
-  score_col   = "likert",
-  score_label = "EQ5D"
-)
-
-res_barthel <- make_score_plot(
-  data        = barthel,
-  score_col   = "barthel_index",
-  score_label = "Barthel"
-)
-
-
-# Combine plots side-by-side with a single shared legend at the bottom
+# Figure 2a: UPDRS-III, BDI-II, NMSS, MoCA
 combined_secondary1 <- (
-  (res_updrs$plot + theme(legend.position = "none")) +
-  (res_bdi$plot   + theme(legend.position = "none")) +
-  (res_nmss$plot  + theme(legend.position = "none")) +
-  (res_moca$plot  + theme(legend.position = "right"))  # or c(0.98, 0.05) for inside
+  (res_updrs$plot + ggplot2::theme(legend.position = "none")) +
+  (res_bdi$plot   + ggplot2::theme(legend.position = "none")) +
+  (res_nmss$plot  + ggplot2::theme(legend.position = "none")) +
+  (res_moca$plot  + ggplot2::theme(legend.position = "right"))
 ) +
-  plot_layout(ncol = 2) +
-  plot_annotation(
+  patchwork::plot_layout(ncol = 2) +
+  patchwork::plot_annotation(
     title = "Secondary Outcomes: UPDRS-III, BDI-II, NMSS, MoCA",
-    theme = theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, size = 22)
-    )
+    theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 22))
   )
 
-# Remove x-axis text/labels for all panels
+# Remove x-axis labels for all panels
 combined_secondary1 <- combined_secondary1 &
-  theme(
-    axis.title.x = element_blank(),
-    axis.text.x  = element_blank(),
-    axis.ticks.x = element_blank()
+  ggplot2::theme(
+    axis.title.x = ggplot2::element_blank(),
+    axis.text.x  = ggplot2::element_blank(),
+    axis.ticks.x = ggplot2::element_blank()
   )
 
 # Restore x-axis for bottom row only (panels 3 and 4)
 combined_secondary1[[3]] <- combined_secondary1[[3]] +
-  theme(
-    axis.title.x = element_text(),
-    axis.text.x  = element_text(),
-    axis.ticks.x = element_line()
-  )
+  ggplot2::theme(axis.title.x = ggplot2::element_text(),
+                 axis.text.x  = ggplot2::element_text(),
+                 axis.ticks.x = ggplot2::element_line())
 
 combined_secondary1[[4]] <- combined_secondary1[[4]] +
-  theme(
-    axis.title.x = element_text(),
-    axis.text.x  = element_text(),
-    axis.ticks.x = element_line()
-  )
+  ggplot2::theme(axis.title.x = ggplot2::element_text(),
+                 axis.text.x  = ggplot2::element_text(),
+                 axis.ticks.x = ggplot2::element_line())
 
 combined_secondary1
 
-# SVG
-ggsave(
+ggplot2::ggsave(
   filename = file.path(results_dir, "fig2.secondaryOutcomes.prepost.v1.0.svg"),
   plot     = combined_secondary1,
   device   = "svg",
@@ -399,31 +258,27 @@ ggsave(
   units    = "in"
 )
 
-# High-resolution PNG
-ggsave(
+ggplot2::ggsave(
   filename = file.path(results_dir, "fig2.secondaryOutcomes.prepost.v1.0.png"),
-  combined_secondary1,
+  plot     = combined_secondary1,
   device   = "png",
   width    = 16,
   height   = 18,
-  dpi      = 600      # high resolution
+  dpi      = 600
 )
 
-
-# Combine plots side-by-side with a single shared legend at the bottom
+# Figure 2b: UPDRS-I, UPDRS-II, UPDRS-IV, Barthel Index
 combined_secondary2 <- (
   res_updrs1$plot +
-  res_updrs2$plot  +
-  res_updrs4$plot
+  res_updrs2$plot +
+  res_updrs4$plot +
+  res_barthel$plot
 ) +
-  plot_layout(guides = "collect") +   # one shared legend
-  plot_annotation(
-    title = "Secondary Outcomes: UPDRS-I, UPDRS-II, UPDRS-IV",
-    theme = theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, size = 22)
-    )
+  patchwork::plot_layout(guides = "collect") +
+  patchwork::plot_annotation(
+    title = "Secondary Outcomes: UPDRS-I, UPDRS-II, UPDRS-IV, Barthel Index",
+    theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 22))
   ) &
-  theme(legend.position = "bottom")   # apply to collected legend
+  ggplot2::theme(legend.position = "bottom")
 
 combined_secondary2
-

@@ -1,37 +1,47 @@
 #!/usr/bin/env Rscript
 
-## ---------------------------
-##
-## Script name: 03_createTableOne.R
-##
-## Purpose of script: Create a TableOne for the project after data cleanup is finished 
-## (for details see [02_cleanup_data.R]).
-##
-## Authors: Antonia Koelble, David Pedrosa
-##
-## ---------------------------
-##
-## Notes:
-##   - Project: ParkProReakt (2022–2025)
-##   - GitHub repository: https://github.com/dpedrosac/flagshipPPR/
-##
-## ---------------------------
-
-
-# This is code to analyse the ParkProReakt results (project from 2022 -2025)
-# Code developed by Antonia Koelble and  David Pedrosa
+# ---------------------------
 #
-# Version 1.0 # 2025-26-11 # First version
+# Script name: 03_createTableOne.R
+#
+# Purpose of script: Create a TableOne for the project after data cleanup is finished 
+# (for details see [02_cleanup_data.R]).
+#
+# Authors:	Antonia Koelble, Anna Pedrosa, Hanna Fischer, David Pedrosa
+#
+# ---------------------------
+#
+# Notes:
+#   - Project: ParkProReakt (2022–2025)
+#   - GitHub repository: https://github.com/dpedrosac/flagshipPPR/
+#
+# ---------------------------
 
-################################################################################
-# Create TableOne
-################################################################################
+# ---- # Tidy up code: --------------------------------------------------------
 
 # runs necessary analyses if data is not in the workspace
 if (!exists("demographics_pat") || !is.data.frame(demographics_pat)) {
   message("Object missing or invalid — running cleanup script.")
   source("02_cleanup_data.V1.3.R")
 }
+
+# As "joins" may create group.x / group.y; standardise to a single `group`.
+if (!("group" %in% names(demographics_pat))) {
+  if (all(c("group.y", "group.x") %in% names(demographics_pat))) {
+    demographics_pat <- demographics_pat %>%
+      mutate(group = dplyr::coalesce(group.y, group.x)) %>%
+      select(-group.x, -group.y)
+  } else if ("group.y" %in% names(demographics_pat)) {
+    demographics_pat <- demographics_pat %>%
+      rename(group = group.y)
+  } else if ("group.x" %in% names(demographics_pat)) {
+    demographics_pat <- demographics_pat %>%
+      rename(group = group.x)
+  }
+}
+
+demographics_pat <- demographics_pat %>%
+  mutate(group = factor(group, levels = c("Control", "Intervention")))
 
 ## Tidyup code
 demographics_pat <- demographics_pat %>%
@@ -70,15 +80,14 @@ demographics_pat <- demographics_pat %>%
     UPDRS_IV  = Teil4
   )
   	
-
 tab_city <- CreateTableOne(
   vars = c(
     "age_years", "sex_female","marital_status","housing",
     "native_language_recoded","education", "hoehnyahrlevel",
-    "employment_status", "UPDRS_I", "UPDRS_II", "UPDRS_III", "UPDRS_IV", 
+    "employment_status", "UPDRS_I", "UPDRS_II", "UPDRS_III", "UPDRS_IV",
     "total_score_moca", "bdi_score", "nmss_total"
   ),
-  strata = "group.y",
+  strata = "group",
   data = demographics_pat,
   factorVars = c(
     "sex_female", "marital_status", "housing", "native_language_recoded","education",
@@ -132,12 +141,7 @@ write.csv(
   na = ""
 )
 
-# -----------------------------------------------------
-# 1) Construct dataset for flowchart logic
-# -----------------------------------------------------
-
-library(consort)
-library(ggplot2)
+# ---- # Construct dataset for flowchart logic: -------------------------------
 
 ## 1) Top box
 g <- add_box(

@@ -1,84 +1,18 @@
 #!/usr/bin/env Rscript
+# =============================================================================
+# Script Name:  04_analysespdq.V1.1.R
+# Purpose:      Primary endpoint analyses for PDQ-39 (descriptives, plots, and linear mixed models).
+#
+# Author(s):    Antonia Koelble; David Pedrosa
+#
+# Notes:
+# Project:     ParkProReakt (2022–2025)
+# Repository:  https://github.com/dpedrosac/flagshipPPR/
+# Inputs:     results/sorted_pdq39.csv (created by 02_cleanup_data.R)
+# Outputs:    figures and model tables written to results/ (see ggsave/tab_model).
+# =============================================================================
 
-## ---------------------------
-##
-## Script name:  03_analyses.v1.0.R
-##
-## Purpose of script: Analyse ParkProReakt study results (2022–2025), including
-##                    PDQ-39, BDI, MoCA, UPDRS, Hoehn & Yahr, demographics,
-##                    and additional questionnaires.
-##
-## Authors: Antonia Koelble, David Pedrosa
-##
-## ---------------------------
-##
-## Notes:
-##   - Project: ParkProReakt (2022–2025)
-##   - GitHub repository: https://github.com/dpedrosac/flagshipPPR/
-##
-## ---------------------------
-##
-## Version history:
-##   1.0 — 2025-12-05 — First version intending to start with analyses.
-##
-## ---------------------------
-
-
-
-################################################################################
-# Data preparation
-################################################################################
-
-pkgs <- c(
-  "consort", "dplyr", "emmeans", "ggplot2", "janitor", "lme4", "lubridate",
-  "patchwork", "purrr", "readr", "survival", "sjPlot", "stringr", "tableone",
-  "tidyr", "tidyverse"
-)
-
-# Install any packages that are not yet installed and load them
-for (p in pkgs) {
-  if (!requireNamespace(p, quietly = TRUE)) {
-    install.packages(p, dependencies = TRUE)
-  }
-  library(p, character.only = TRUE)
-}
-
-################################################################################
-# Paths and global settings
-################################################################################
-
-# Toggle this to TRUE when you want to see quick checks in the console/Viewer
-sanity_check <- TRUE
-
-# Get user name (works on Windows and almost all other systems)
-user_name <- Sys.getenv("USERNAME", unset = Sys.info()[["user"]])
-
-# Define base directory depending on user
-if (user_name == "akoel") {
-  base_dir <- file.path("C:", "Users", "akoel", "OneDrive","Desktop", "Dr. Arbeit")
-} else if (user_name == "david") {
-  base_dir <- file.path("/", "media", "storage", "flagshipPPR")
-} else {
-  # Fallback: use the user's home directory
-  base_dir <- path.expand("~")
-  message(
-    "⚠️ Unknown user: ", user_name,
-    ". Using default home directory instead."
-  )
-}
-
-# Define path where results are saved
-# (this folder will be created if it doesn't exist)
-results_dir <- file.path(base_dir, "results")
-
-if (!dir.exists(results_dir)) {
-  dir.create(results_dir, recursive = TRUE)
-  message("📁 Created folder: ", results_dir)
-}
-
-############################################################################################
-# Load data data into workspace:
-############################################################################################
+# ---- # Load necessary data: --------------------------------------------------
 
 sorted_pdq39 <- tryCatch(     # First attempt: read the existing CSV
   {
@@ -115,9 +49,7 @@ sorted_pdq39 <- tryCatch(     # First attempt: read the existing CSV
   }
 )
 
-############################################################################################
-# Descriptive statistics:
-############################################################################################
+# ---- Descriptive statistics: -------------------------------------------------
 
 analysis_both <- sorted_pdq39 %>%
   dplyr::group_by(group, Timepoint) %>%           # <- group by both
@@ -145,13 +77,12 @@ if (isTRUE(sanity_check)) { # Only show outputs if sanity_check is TRUE
 }
 
 
-############################################################################################
-# Boxplots, group- and time-sorted:
-############################################################################################
+# ---- Boxplots, group- and time-sorted: -------------------------------------------------
 
-pdq39_T0_T6 <- sorted_pdq39 %>% filter(Timepoint %in% c("T0", "T6"))
 
-# example for boxplots of two groups (as facets)
+pdq39_T0_T6 <- sorted_pdq39 %>% filter(Timepoint %in% c("T0", "T6")) # only before and after intervention
+
+# Boxplots of two groups (as facets)
 boxplot_pdq39 <- ggplot(
   data = pdq39_T0_T6,
   aes(x = Timepoint, y = pdq39_sum_index, fill = group)
@@ -176,8 +107,8 @@ boxplot_pdq39 <- ggplot(
     panel.grid.major.x = element_blank()
   )
 
-# 1) Summary statistics for Mean ± SD
-# =====================================================================
+
+# ---- Summary statistics for Mean ± SD: -------------------------------------------------
 
 df_summary <- pdq39_T0_T6 %>%
   group_by(group, Timepoint) %>%
@@ -188,37 +119,32 @@ df_summary <- pdq39_T0_T6 %>%
     .groups = "drop"
   ) %>%
   mutate(
-    # Recode T0/T6 to human-readable labels
-    Timepoint = recode(
+    Timepoint = recode( # Recode T0/T6 to labels that are easier to understand
       Timepoint,
       "T0" = "baseline",
       "T6" = "6-months"
     ),
-
-    # Fix ordering on the x-axis
     Timepoint = factor(Timepoint, levels = c("baseline", "6-months")),
-
-    # Numeric x positions
     x_num  = as.numeric(Timepoint),
-
-    # Shift text labels left/right
     x_text = x_num + ifelse(group == "Control", -0.15, 0.15)
   )
 
-# 2) Plot parameters; Mean ± SD with shifted labels
-# =====================================================================
+# ---- Plot PDQ-39 change over time by group -----------------------------------
 
-dodge_w   <- 0.15
-pdodge    <- position_dodge(width = dodge_w)
-yposition <- max(df_summary$mean + df_summary$sd)
+# Parameters
+dodge_w <- 0.15
+pdodge  <- position_dodge(width = dodge_w)
 
+y_position <- max(df_summary$mean + df_summary$sd, na.rm = TRUE)
+y_limit    <- ceiling(y_position + 5)
+
+out_base <- file.path(results_dir, "fig1.pdq39.prepost.v1.0")
 
 pdq39_mean_sd <- ggplot(
-    df_summary,
-    aes(x = Timepoint, y = mean, group = group, linetype = group)
-  ) +
-
-  # Error bars: ± SD
+  df_summary,
+  aes(x = Timepoint, y = mean, group = group, linetype = group)
+) +
+  # Error bars: mean ± SD
   geom_errorbar(
     aes(ymin = mean - sd, ymax = mean + sd),
     position  = pdodge,
@@ -226,56 +152,31 @@ pdq39_mean_sd <- ggplot(
     linewidth = 1.1,
     color     = "black"
   ) +
-
-  # Mean points
-  geom_point(
-    position = pdodge,
-    size     = 3,
-    color    = "black"
-  ) +
-
-  # Mean connecting lines
-  geom_line(
-    position  = pdodge,
-    linewidth = 1.2,
-    color     = "black"
-  ) +
-
-  # Text labels positioned at x_text
+  # Means (points + connecting lines)
+  geom_point(position = pdodge, size = 3, color = "black") +
+  geom_line(position = pdodge, linewidth = 1.2, color = "black") +
+  # Sample size labels
   geom_text(
-    data        = df_summary,
-    aes(
-      x     = x_text,
-      y     = yposition,
-      label = sprintf("n = %d", n)
-    ),
+    aes(x = x_text, y = y_position, label = sprintf("n = %d", n)),
     vjust       = -0.8,
     size        = 6,
     color       = "black",
     inherit.aes = FALSE
   ) +
-
-  # Line type mapping
-  scale_linetype_manual(values = c(
-    "Control"      = "solid",
-    "Intervention" = "dashed"
-  )) +
-
-  # Y-axis limits
-  coord_cartesian(ylim = c(0, ceiling(yposition + 5))) +
-
-  # Labels
+  # Group linetypes
+  scale_linetype_manual(
+    values = c(Control = "solid", Intervention = "dashed"),
+    name   = "Group"
+  ) +
+  # Axes and labels
+  coord_cartesian(ylim = c(0, y_limit)) +
   labs(
     title    = "PDQ-39 Mean ± SD by Timepoint and Group",
     subtitle = "Group trajectories (solid vs. dashed) with ± SD error bars",
-    x        = "",
-    y        = "PDQ-39 Sum Index",
-    linetype = "Group"
+    x        = NULL,
+    y        = "PDQ-39 Sum Index"
   ) +
-
-  # =====================================================================
-  # FONT SIZES HERE → CHANGE base_size for overall magnification
-  # =====================================================================
+  # Theme
   theme_minimal(base_size = 18) +
   theme(
     legend.position    = "right",
@@ -289,51 +190,24 @@ pdq39_mean_sd <- ggplot(
 
 pdq39_mean_sd
 
-# SVG
-ggsave(
-  file.path(results_dir, "fig1.pdq39.prepost.v1.0.svg"),
-  pdq39_mean_sd,
-  device = "svg",
-  width = 10,
-  height = 7
-)
-
-# High-resolution PNG
-ggsave(
-  file.path(results_dir, "fig1.pdq39.prepost.v1.0.png"),
-  pdq39_mean_sd,
-  device = "png",
-  width = 10,
-  height = 7,
-  dpi = 600      # high resolution
-)
+# Export SVG and PNG
+ggsave(paste0(out_base, ".svg"), plot = pdq39_mean_sd, width = 10, height = 7, device = "svg")
+ggsave(paste0(out_base, ".png"), plot = pdq39_mean_sd, width = 10, height = 7, dpi = 600, device = "png")
 
 
-############################################################################################
-# Main analysis with a Linear mixed model:
-############################################################################################
+# ---- Statistical analyses for primary outcome -----------------------------------
 
 # Adding baseline per patient as covariate to account for differences
-pdq_baseline <- pdq39_T0_T6 %>%
-  filter(Timepoint == "T0") %>%
-  select(
-    patient,
-    pdq39_baseline = pdq39_sum_index
-  )
-
-# Join baseline and drop rowswithout baseline (needed for covariate model)
 pdq39_T0_T6_model <- pdq39_T0_T6 %>%
-  left_join(pdq_baseline, by = "patient") %>%
+  left_join(
+    pdq39_T0_T6 %>%
+      filter(Timepoint == "T0") %>%
+      transmute(patient, pdq39_baseline = pdq39_sum_index),
+    by = "patient"
+  ) %>%
   filter(!is.na(pdq39_baseline)) %>%
-    mutate(
-    # Recode T0/T6 to human-readable labels
-    Timepoint = recode(
-      Timepoint,
-      "T0" = "baseline",
-      "T6" = "6-months"
-    )
-)
-
+  mutate(Timepoint = recode(Timepoint, T0 = "baseline", T6 = "6-months"))
+  
 # Model WITHOUT baseline covariate
 model_lmm <- lmer(
   pdq39_sum_index ~ group * Timepoint + (1 | patient),
@@ -341,264 +215,338 @@ model_lmm <- lmer(
   REML = FALSE
 )
 
-# Model WITH baseline covariate
+# Model WITH baseline covariate, after recentering and scaling
+pdq39_T0_T6_centered <- pdq39_T0_T6_model %>%
+  mutate(
+    tp6 = as.numeric(Timepoint == "6-months"),               # 0/1 indicator
+    pdq39_bl_c = as.numeric(scale(pdq39_baseline, center = TRUE, scale = FALSE))
+  )
+
 model_lmm_cov <- lmer(
-  pdq39_sum_index ~ pdq39_baseline + group * Timepoint + (1 | patient),
-  data = pdq39_T0_T6_model,
-  REML = FALSE
+  pdq39_sum_index ~ group * Timepoint + pdq39_bl_c:tp6 + (1 | patient),
+  data = pdq39_T0_T6_centered,
+  REML = FALSE,
+  control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 )
 
-install.packages("performance")
-library(performance)
-
-anova(model_lmm, model_lmm_cov)
 performance_lmm_cov <- model_performance(model_lmm_cov)
 performance_lmm_cov
 
-model_lmm_cov_reml <- lmer(
-  pdq39_sum_index ~ pdq39_baseline + group * Timepoint + (1 | patient),
-  data = pdq39_T0_T6_model,
-  REML = TRUE
-)
-
-summary(model_lmm_cov_reml)
-anova(model_lmm_cov_reml, type = 3)
+summary(model_lmm_cov)
+anova(model_lmm_cov, type = 3)
 
 tab_model(
-  model_lmm_cov_reml,
+  model_lmm_cov,
   show.re.var = TRUE,
   show.icc = TRUE,
   file = file.path(results_dir, "Tab1.pdq39_model_covariate.v1.0.doc")
 )
 
-########################################################################################################
-#T0 und T6next to each other to measure difference, if <= -4.72
-pdq_change <- pdq39_T0_T6 %>%
-  select(patient, group, Timepoint, pdq39_sum_index) %>%
-  pivot_wider(
-    id_cols    = c(patient, group),
-    names_from = Timepoint,          # erzeugt Spalten T0 und T6
-    values_from = pdq39_sum_index
-  ) %>%
-  mutate(
-    pdq39_T0  = T0,                  # Baseline-Spalte
-    delta_T6  = T6 - T0,             # Change-Score
-    responder = ifelse(delta_T6 <= -4.72, 1, 0)   # MCID-Kriterium
+# Interpretion of results in written form (adapt in case of changing values/analyses):
+cf <- summary(model_lmm_cov)$coefficients
+
+tp  <- "Timepoint6-months"
+int <- "groupIntervention:Timepoint6-months"
+
+sprintf(
+  paste0(
+    "A linear mixed model with random intercepts for patient showed no clear change over time in controls ",
+    "(β = %.2f, SE = %.2f, df = %.1f, t = %.2f, p = %.4f, 95%% CI [%.2f, %.2f]), ",
+    "and the group × time interaction suggested greater improvement in the intervention group ",
+    "(β = %.2f, SE = %.2f, df = %.1f, t = %.2f, p = %.4f, 95%% CI [%.2f, %.2f])."
+  ),
+  cf[tp, "Estimate"],  cf[tp, "Std. Error"],  cf[tp, "df"],  cf[tp, "t value"],  cf[tp, "Pr(>|t|)"],
+  cf[tp, "Estimate"] - 1.96 * cf[tp, "Std. Error"],
+  cf[tp, "Estimate"] + 1.96 * cf[tp, "Std. Error"],
+  cf[int, "Estimate"], cf[int, "Std. Error"], cf[int, "df"], cf[int, "t value"], cf[int, "Pr(>|t|)"],
+  cf[int, "Estimate"] - 1.96 * cf[int, "Std. Error"],
+  cf[int, "Estimate"] + 1.96 * cf[int, "Std. Error"]
+)
+
+# ---- Optional sanity checks -----------------------------------
+
+if (isTRUE(sanity_check)) {
+
+  # ---- Parameters ------------------------------------------------------------
+  MCID <- -4.72
+
+  group_cols <- c(
+    "Control"      = "red",
+    "Intervention" = "steelblue"
   )
 
-# Responder-Info zurück in den Long-Datensatz
-pdq39_T0_T6 <- pdq39_T0_T6 %>%
-  left_join(
-    pdq_change %>% select(patient, pdq39_T0, delta_T6, responder),
-    by = "patient"
+  responder_cols <- c(
+    "Non-responder" = "grey60",
+    "Responder"     = "darkgreen"
   )
 
-#############################################################################
-#change analysis
-#scatterplot nach groups
-ggplot(pdq_change, aes(x = T0, y = T6, color = group)) +
-  geom_point(alpha = 0.6) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-  scale_color_manual(
-    name   = "Gruppe",
-    values = c("Control" = "chartreuse4", "Intervention" = "steelblue"),
-    labels = c("Control" = "Kontroll",
-               "Intervention" = "Intervention")
-  ) +
-  labs(
-    title = "PDQ-39-SI zu T0 und T6 nach Gruppe",
-    x = "PDQ-39-SI T0",
-    y = "PDQ-39-SI T6"
-  ) +
-  theme_minimal()
+  base_theme <- theme_minimal(base_size = 14)
 
+  # ---- Prepare wide change dataset (robust to T0/T6 vs baseline/6-months) ----
+  pdq_change <- pdq39_T0_T6 %>%
+    mutate(
+      Timepoint = recode(
+        Timepoint,
+        "baseline" = "T0",
+        "6-months" = "T6"
+      ),
+      group = factor(group, levels = c("Control", "Intervention"))
+    ) %>%
+    select(patient, group, Timepoint, pdq39_sum_index) %>%
+    pivot_wider(
+      id_cols     = c(patient, group),
+      names_from  = Timepoint,
+      values_from = pdq39_sum_index
+    ) %>%
+    mutate(
+      pdq39_T0  = T0,
+      pdq39_T6  = T6,
+      delta_T6  = pdq39_T6 - pdq39_T0,
+      responder = if_else(delta_T6 <= MCID, "Responder", "Non-responder"),
+      responder = factor(responder, levels = c("Non-responder", "Responder"))
+    )
 
-#scatterplot  fpr mcid by groups
-#dont know yet...could be to much
-####ggplot(pdq_change,
-####aes(x = T0, y = T6, color = factor(responder))) +
-#### geom_point(alpha = 0.7, size = 2) +
-####  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-#### scale_color_manual(
-####    name   = "Responder",
-####   values = c("0" = "grey60", "1" = "darkgreen"),
-####   labels = c("kein MCID", "MCID erreicht")
-####  ) +
-####  facet_wrap(~ group) +
-####  labs(x = "PDQ-39 T0", y = "PDQ-39 T6") +
-####  theme_minimal()
+  # ---- (Optional) Join responder info back into the long dataset -------------
+  pdq39_T0_T6 <- pdq39_T0_T6 %>%
+    left_join(
+      pdq_change %>% select(patient, pdq39_T0, delta_T6, responder),
+      by = "patient"
+    )
 
+  # ---- Plot 1: T0 vs T6 scatter by group -------------------------------------
+  p1 <- ggplot(pdq_change, aes(x = pdq39_T0, y = pdq39_T6, color = group)) +
+    geom_point(alpha = 0.6) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    scale_color_manual(values = group_cols, name = "Group") +
+    labs(
+      title = "PDQ-39 SI at Baseline (T0) and 6 Months (T6) by Group",
+      x     = "PDQ-39 SI (T0)",
+      y     = "PDQ-39 SI (T6)"
+    ) +
+    base_theme
 
-ggplot(pdq_change, aes(x = pdq39_T0, y = delta_T6, color = factor(responder))) +
-  geom_point(alpha = 0.7) +
-  geom_hline(yintercept = 0,     linetype = "dashed") +
-  geom_hline(yintercept = -4.72, linetype = "dotted", color = "darkgreen") +
-  scale_color_manual(
-    name   = "Responder-Status",
-    values = c("0" = "grey60", "1" = "darkgreen"),
-    labels = c("0" = "kein MCID erreicht",
-               "1" = "MCID erreicht")
-  ) +
-  labs(
-    title = "Änderung des PDQ-39-SI (T6−T0) nach Ausgangswert und MCID-Status",
-    x     = "PDQ-39-SI T0",
-    y     = "Änderung des PDQ-39-SI (T6−T0)"
-  ) +
-  theme_minimal()
+  # ---- Optional: Responder scatter by group (currently disabled) -------------
+  # ggplot(pdq_change, aes(x = T0, y = T6, color = factor(responder))) +
+  #   geom_point(alpha = 0.7, size = 2) +
+  #   geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  #   scale_color_manual(
+  #     name   = "Responder",
+  #     values = c("0" = "grey60", "1" = "darkgreen"),
+  #     labels = c("0" = "No MCID achieved", "1" = "MCID achieved")
+  #   ) +
+  #   facet_wrap(~ group) +
+  #   labs(x = "PDQ-39 T0", y = "PDQ-39 T6") +
+  #   theme_minimal()
 
+  # ---- Plot 2: Change vs baseline, colored by responder ----------------------
+  p2 <- ggplot(pdq_change, aes(x = pdq39_T0, y = delta_T6, color = responder)) +
+    geom_point(alpha = 0.7) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_hline(
+      yintercept = MCID,
+      linetype   = "dotted",
+      color      = responder_cols["Responder"]
+    ) +
+    scale_color_manual(values = responder_cols, name = "Responder status") +
+    labs(
+      title = "Change in PDQ-39 SI (T6 − T0) by Baseline and MCID Status",
+      x     = "PDQ-39 SI (T0)",
+      y     = "Change in PDQ-39 SI (T6 − T0)"
+    ) +
+    base_theme
 
+  # ---- Plot 3: Histogram of change -------------------------------------------
+  p3 <- ggplot(pdq_change, aes(x = delta_T6)) +
+    geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+    geom_vline(
+      xintercept = MCID,
+      linetype   = "dashed",
+      color      = responder_cols["Responder"]
+    ) +
+    labs(
+      title = "Distribution of Change in PDQ-39 SI (T6 − T0)",
+      x     = "Change in PDQ-39 SI (T6 − T0)",
+      y     = "Number of patients"
+    ) +
+    base_theme
 
+  # ---- Combine into one 3-panel figure (patchwork) ---------------------------
+  fig_pdq_sanity <- (p1 | p2) / p3 +
+    plot_annotation(
+      title      = "PDQ-39 Sanity Checks and MCID Response",
+      subtitle   = sprintf("Responder definition: change ≤ %.2f (MCID)", MCID),
+      tag_levels = "A"
+    )
 
-#histogram von delta_T6
-ggplot(pdq_change, aes(x = delta_T6)) +
-  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
-  geom_vline(xintercept = -4.72, linetype = "dashed", color = "darkgreen") +
-  labs(
-    title = "Verteilung der Änderung des PDQ-39-SI (T6−T0)",
-    x     = "Änderung des PDQ-39-SI (T6−T0)",
-    y     = "Anzahl Patienten"
-  ) +
-  theme_minimal()
+  fig_pdq_sanity
 
-#i guess to much
-##p_hist <- ggplot(pdq_change, aes(x = delta_T6)) +
-##  geom_histogram(aes(y = ..density..),
-##                 bins = 30,
-##                 fill = "steelblue",
-##                 alpha = 0.6,
-##                 color = "white") +
-##  stat_function(
-##    fun  = dnorm,
-##    args = list(
-##      mean = mean(pdq_change$delta_T6, na.rm = TRUE),
-##     sd   = sd(pdq_change$delta_T6,   na.rm = TRUE)
-##    ),
-##    color = "darkorange",
-##    linewidth = 1
-##  ) +
-##  labs(
-##    title = "Verteilung der Änderung des PDQ-39-SI (T6−T0)",
-##    x     = "Änderung des PDQ-39-SI (T6−T0)",
-##    y     = "Dichte"
-## ) +
-##  theme_minimal()
-### Horizontaler Boxplot darunter
-##p_box <- ggplot(pdq_change, aes(x = 1, y = delta_T6)) +
-##  geom_boxplot(width = 0.4) +
-##  coord_flip() +
-##  labs(x = NULL, y = NULL) +
-##  theme_minimal() +
-##  theme(
-##    axis.text.y  = element_blank(),
-##    axis.ticks.y = element_blank()
-##  )
-### 
-##p_panel <- p_hist / p_box + plot_layout(heights = c(3, 1))
-##p_panel
-###############################################################################################################
+  # ---- Optional: Alternative histogram + boxplot panel (disabled) ------------
+  # p_hist <- ggplot(pdq_change, aes(x = delta_T6)) +
+  #   geom_histogram(
+  #     aes(y = ..density..),
+  #     bins  = 30,
+  #     fill  = "steelblue",
+  #     alpha = 0.6,
+  #     color = "white"
+  #   ) +
+  #   stat_function(
+  #     fun  = dnorm,
+  #     args = list(
+  #       mean = mean(pdq_change$delta_T6, na.rm = TRUE),
+  #       sd   = sd(pdq_change$delta_T6,   na.rm = TRUE)
+  #     ),
+  #     color     = "darkorange",
+  #     linewidth = 1
+  #   ) +
+  #   labs(
+  #     title = "Distribution of change in PDQ-39 SI (T6 − T0)",
+  #     x     = "Change in PDQ-39 SI (T6 − T0)",
+  #     y     = "Density"
+  #   ) +
+  #   theme_minimal()
+  #
+  # p_box <- ggplot(pdq_change, aes(x = 1, y = delta_T6)) +
+  #   geom_boxplot(width = 0.4) +
+  #   coord_flip() +
+  #   labs(x = NULL, y = NULL) +
+  #   theme_minimal() +
+  #   theme(
+  #     axis.text.y  = element_blank(),
+  #     axis.ticks.y = element_blank()
+  #   )
+  #
+  # p_panel <- p_hist / p_box + plot_layout(heights = c(3, 1))
+  # p_panel
 
-#error diststribution
-#binary variable: jes/no therefore binomial distribtuion 
-# with Link function: logit, cause directly odds ratio interperetation
-#to show responder is binary
-table(pdq39_T0_T6$responder)
-prop.table(table(pdq39_T0_T6$group, pdq39_T0_T6$responder), 1)
+  # ---- (Optional) Save -------------------------------------------------------
+  # ggsave(
+  #   file.path(results_dir, "fig_pdq39_sanity_mcid.png"),
+  #   fig_pdq_sanity,
+  #   width = 12,
+  #   height = 9,
+  #   dpi = 600
+  # )
+  # ggsave(
+  #   file.path(results_dir, "fig_pdq39_sanity_mcid.svg"),
+  #   fig_pdq_sanity,
+  #   width = 12,
+  #   height = 9,
+  #   device = "svg"
+  # )
+}
 
-#Proportions  per group: Control: 1= 23.4%; Intervention: 1= 33.7%
-#roportions will be quantified by  GLM
+#TODO @Antonia: Maybe you can check if this is necessary or not?
+# ---- Responder analysis (commented out) --------------------------------------
+# Rationale:
+# - The outcome "responder" is binary (yes/no), so a binomial GLM is appropriate.
+# - Using a logit link allows interpretation in terms of odds ratios (ORs).
 
-#glm, weil keine zeitvariable mehr
-glm_responder <- glm(
-  responder ~ group, 
-  data = pdq_change,           
-  family = binomial(link = "logit")
-)
-summary(glm_responder)
+# # Show that responder is binary and inspect counts/proportions
+# table(pdq39_T0_T6$responder)
+# prop.table(table(pdq39_T0_T6$group, pdq39_T0_T6$responder), 1)
+#
+# # Example interpretation (replace with your computed values if needed):
+# # Proportions by group: Control: 1 = 23.4%; Intervention: 1 = 33.7%
+# # These proportions are quantified using a GLM (no time variable here).
 
-exp(cbind(OR = coef(glm_responder), confint(glm_responder)))
-performance::model_performance(glm_responder)
+# # Unadjusted logistic regression (group only)
+# glm_responder <- glm(
+#   responder ~ group,
+#   data   = pdq_change,
+#   family = binomial(link = "logit")
+# )
+# summary(glm_responder)
+#
+# # Odds ratios with confidence intervals
+# exp(cbind(OR = coef(glm_responder), confint(glm_responder)))
+# performance::model_performance(glm_responder)
 
+# # Create a summary table of responder counts and within-group percentages
+# tab_responder <- pdq_change %>%
+#   group_by(group, responder) %>%
+#   summarise(n = n(), .groups = "drop") %>%
+#   group_by(group) %>%
+#   mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+#   ungroup() %>%
+#   select(group, responder, n, percent) %>%
+#   pivot_wider(
+#     names_from  = c(group, responder),
+#     values_from = c(n, percent),
+#     names_sep   = "_"
+#   )
+#
+# print(tab_responder)
 
-tab_responder <- pdq_change %>%
-  group_by(group, responder) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  group_by(group) %>%                         
-  mutate(Prozent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
-  ungroup() %>%
-  select(group, responder, n, Prozent) %>%
-  pivot_wider(names_from = c(group, responder),
-              values_from = c(n, Prozent),
-              names_sep = "_")
+# # Forest-style plot of the intervention effect (OR + 95% CI)
+# # TODO: OR/CI are hard-coded; maybe extract them from glm_responder?!
+# or_data <- data.frame(
+#   term  = "Intervention vs. Control",
+#   OR    = 1.663,
+#   lower = 0.877,
+#   upper = 3.195
+# )
+#
+# ggplot(or_data, aes(x = OR, y = term)) +
+#   geom_point(size = 4, color = "steelblue") +
+#   geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2, color = "steelblue") +
+#   geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+#   scale_x_continuous(trans = "log10") +
+#   labs(
+#     x     = "Odds Ratio [95% CI]",
+#     title = "MCID Achievement: Intervention Effect"
+#   ) +
+#   theme_minimal() +
+#   theme(axis.title.y = element_blank())
 
+# # Estimated marginal means (predicted probabilities) by group
+# emmeans::emmeans(glm_responder, ~ group, type = "response")
+# prop.table(table(pdq_change$group, pdq_change$responder), 1)
 
-print(tab_responder)
+# # Overdispersion check (Pearson residuals)
+# rp   <- residuals(glm_responder, type = "pearson")
+# rdf  <- df.residual(glm_responder)
+# disp <- sum(rp^2) / rdf
+# disp
+# # Interpretation: dispersion is consistent with the binomial assumption.
 
-#plot intervention
-or_data <- data.frame(
-  term = "Intervention vs. Kontrolle",
-  OR = 1.663, lower = 0.877, upper = 3.195
-)
+# # Baseline-adjusted logistic regression
+# names(pdq_change)
+#
+# glm_responder_cov <- glm(
+#   responder ~ group + pdq39_T0,
+#   data   = pdq_change,
+#   family = binomial(link = "logit")
+# )
+# summary(glm_responder_cov)
+#
+# exp(cbind(OR = coef(glm_responder_cov), confint(glm_responder_cov)))
+# performance::model_performance(glm_responder_cov)
 
-ggplot(or_data, aes(x = OR, y = term)) +
-  geom_point(size = 4, color = "steelblue") +
-  geom_errorbarh(aes(xmin = lower, xmax = upper), 
-                 height = 0.2, color = "steelblue") +
-  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
-  scale_x_continuous(trans = "log10") +
-  labs(x = "Odds Ratio [95%-KI]", 
-       title = "MCID-Erreichen: Interventions-Effekt") +
-  theme_minimal() +
-  theme(axis.title.y = element_blank())
+# # Predicted probabilities (with CI) by group from the baseline-adjusted model
+# emmeans::emmeans(glm_responder_cov, ~ group, type = "response") %>%
+#   as.data.frame()
 
-emmeans::emmeans(glm_responder, ~ group, type = "response")
-prop.table(table(pdq_change$group, pdq_change$responder), 1)
+# # Model comparison: unadjusted vs baseline-adjusted
+# m0 <- glm(
+#   responder ~ group,
+#   data   = pdq_change,
+#   family = binomial(link = "logit")
+# )
+# m1 <- glm(
+#   responder ~ group + pdq39_T0,
+#   data   = pdq_change,
+#   family = binomial(link = "logit")
+# )
+#
+# AIC(m0, m1)
+# anova(m0, m1, test = "Chisq")
+# # If p < 0.001, baseline PDQ is important → prefer m1.
 
-#overdisperion
-rp   <- residuals(glm_responder, type = "pearson")
-rdf  <- df.residual(glm_responder)
-disp <- sum(rp^2) / rdf
-disp
-#streuung passt zur binomialen vermutung
+# # Verify how many rows were used by the baseline-adjusted model
+# dat_mod <- model.frame(glm_responder_cov)
+# nrow(dat_mod)
+# length(fitted(glm_responder_cov))
+#
+# # Example note:
+# # AUC = 0.74; acceptable discrimination.
 
-#glm baseline adjusted
-names(pdq_change)
-
-glm_responder_cov <- glm(
-  responder ~ group + pdq39_T0,
-  data   = pdq_change,
-  family = binomial(link = "logit")
-)
-summary(glm_responder_cov)
-
-exp(cbind(OR = coef(glm_responder_cov), confint(glm_responder_cov)))
-#signifcant intervention effect?1.01
-
-performance::model_performance(glm_responder_cov)
-
-#KI für responder
-emmeans::emmeans(glm_responder_cov, ~ group, type = "response") %>%
-  as.data.frame()
-
-# comparison
-m0 <- glm(responder ~ group,
-          data = pdq_change,
-          family = binomial(link = "logit"))
-m1 <- glm(responder ~ group + pdq39_T0,
-          data = pdq_change,
-          family = binomial(link = "logit"))
-
-AIC(m0, m1)
-anova(m0, m1, test = "Chisq")
-#Likelihood (p < 0.001), BaselindePDQ important
-#take m1
-
-#possibility to seperate between responders and non-responders. 
-install.packages("pROC")
-library(pROC)
-
-dat_mod <- model.frame(glm_responder_cov)
-
-nrow(dat_mod)          
-length(fitted(glm_responder_cov))
-
-#AUC= 0.74; acceptable

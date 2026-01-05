@@ -29,6 +29,7 @@ required_pkgs <- c(
   "patchwork",
   "performance",
   "scales",
+  "pROC",
   "purrr",
   "readr",
   "rlang",
